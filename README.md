@@ -12,6 +12,7 @@ git clone https://github.com/sricharanandra/ts-radiochat.git
 - start the server
 ```
 cd chat-server
+npm install
 npx ts-node src/server.ts
 ```
 
@@ -19,6 +20,7 @@ npx ts-node src/server.ts
 
 ```
 cd chat-client
+npm install
 npx ts-node src/client.ts
 ```
 
