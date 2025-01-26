@@ -1,157 +1,120 @@
 
-import { WebSocketServer, WebSocket } from "ws";
-import crypto from "crypto";
+import * as net from 'net';
+import { v4 as uuidv4 } from 'uuid';
 
-type User = {
-    username: string;
-    ws: WebSocket;
-};
-
-type ChatRoom = {
+interface Room {
     id: string;
-    creator: User;
-    users: User[];
-    pendingRequests: User[];
-};
+    clients: net.Socket[];
+    owner: net.Socket;
+    pendingRequests: net.Socket[];
+    usernames: Map<net.Socket, string>;
+}
 
-const chatRooms: Record<string, ChatRoom> = {};
-const wss = new WebSocketServer({ port: 8080 });
+const rooms: Map<string, Room> = new Map();
 
-console.log("Server started successfully on port 8080.");
+const server = net.createServer((socket) => {
+    socket.write('Enter your username: ');
 
-wss.on("connection", (ws: WebSocket) => {
-    ws.on("message", (data: string) => {
-        try {
-            const message = JSON.parse(data);
+    let username = '';
+    let currentRoom: Room | null = null;
 
-            switch (message.type) {
-                case "createRoom":
-                    createRoom(message.payload.username, ws);
-                    break;
-                case "joinRoom":
-                    joinRoom(message.payload.username, message.payload.roomId, ws);
-                    break;
-                case "approveJoin":
-                    approveJoinRequest(message.payload.roomId, message.payload.username);
-                    break;
-                case "message":
-                    broadcastMessage(message.payload.roomId, message.payload.sender, message.payload.message);
-                    break;
-                default:
-                    ws.send(JSON.stringify({ type: "error", payload: "Invalid request type." }));
-            }
-        } catch (err) {
-            console.error("Error handling message:", err);
-            ws.send(JSON.stringify({ type: "error", payload: "Invalid message format." }));
+    socket.on('data', (data) => {
+        const message = data.toString().trim();
+
+        if (!username) {
+            username = message;
+            socket.write('Do you want to create a room? (yes/no): ');
+            return;
         }
-    });
 
-    ws.on("close", () => {
-        handleDisconnection(ws);
-    });
-});
+        if (!currentRoom) {
+            if (message.toLowerCase() === 'yes') {
+                const roomId = uuidv4().slice(0, 7);
+                currentRoom = { id: roomId, clients: [], owner: socket, pendingRequests: [], usernames: new Map() };
+                rooms.set(roomId, currentRoom);
+                currentRoom.usernames.set(socket, username);
+                socket.write(`Room created! Your room ID is ${roomId}\n`);
+                return;
+            } else {
+                socket.write('Enter the room ID to join: ');
+                return;
+            }
+        }
 
-function createRoom(username: string, ws: WebSocket) {
-    const roomId = generateRoomId();
-    const newRoom: ChatRoom = {
-        id: roomId,
-        creator: { username, ws },
-        users: [{ username, ws }],
-        pendingRequests: [],
-    };
-    chatRooms[roomId] = newRoom;
-
-    ws.send(JSON.stringify({ type: "roomCreated", payload: { roomId } }));
-    console.log(`Room ${roomId} created by ${username}.`);
-}
-
-function joinRoom(username: string, roomId: string, ws: WebSocket) {
-    const room = chatRooms[roomId];
-
-    if (!room) {
-        ws.send(JSON.stringify({ type: "error", payload: "Room does not exist." }));
-        return;
-    }
-
-    room.pendingRequests.push({ username, ws });
-    promptNextJoinRequest(room);
-
-    console.log(`${username} requested to join room ${roomId}.`);
-}
-
-function promptNextJoinRequest(room: ChatRoom) {
-    if (room.pendingRequests.length > 0) {
-        const nextRequest = room.pendingRequests[0];
-        room.creator.ws.send(
-            JSON.stringify({
-                type: "joinRequest",
-                payload: { username: nextRequest.username },
-            })
-        );
-    }
-}
-
-function approveJoinRequest(roomId: string, username: string) {
-    const room = chatRooms[roomId];
-
-    if (!room) return;
-
-    const requestIndex = room.pendingRequests.findIndex((user) => user.username === username);
-    if (requestIndex !== -1) {
-        const approvedUser = room.pendingRequests.splice(requestIndex, 1)[0];
-        room.users.push(approvedUser);
-
-        approvedUser.ws.send(
-            JSON.stringify({
-                type: "joinApproved",
-                payload: { roomId },
-            })
-        );
-
-        broadcastMessage(roomId, "Server", `${username} has joined the room.`);
-        console.log(`${username} has been admitted to room ${roomId}.`);
-
-        // Prompt the next pending request if there are any
-        promptNextJoinRequest(room);
-    }
-}
-
-function broadcastMessage(roomId: string, sender: string, message: string) {
-    const room = chatRooms[roomId];
-    if (!room) return;
-
-    room.users.forEach((user) => {
-        user.ws.send(
-            JSON.stringify({
-                type: "message",
-                payload: { sender, message },
-            })
-        );
-    });
-
-    console.log(`[Room ${roomId}] ${sender}: ${message}`);
-}
-
-function handleDisconnection(ws: WebSocket) {
-    for (const roomId in chatRooms) {
-        const room = chatRooms[roomId];
-        const userIndex = room.users.findIndex((user) => user.ws === ws);
-
-        if (userIndex !== -1) {
-            const user = room.users.splice(userIndex, 1)[0];
-            broadcastMessage(roomId, "Server", `${user.username} has left the room.`);
-
-            if (room.creator.ws === ws) {
-                broadcastMessage(roomId, "Server", "The room creator has left. The room is closing.");
-                room.users.forEach((user) => user.ws.close());
-                delete chatRooms[roomId];
-                console.log(`Room ${roomId} closed.`);
+        if (message.startsWith('/join ')) {
+            const roomId = message.split(' ')[1];
+            const room = rooms.get(roomId);
+            if (room) {
+                room.pendingRequests.push(socket);
+                room.owner.write(`${username} requested to join room ${roomId}.\nApprove? (yes/no): `);
+            } else {
+                socket.write('Room does not exist.\n');
             }
             return;
         }
-    }
-}
 
-function generateRoomId(): string {
-    return crypto.randomBytes(4).toString("hex").slice(0, 7);
-}
+        if (message.toLowerCase() === 'yes' && currentRoom.owner === socket) {
+            const requester = currentRoom.pendingRequests.shift();
+            if (requester) {
+                currentRoom.clients.push(requester);
+                currentRoom.usernames.set(requester, username);
+                requester.write(`You have been admitted to room ${currentRoom.id}.\n`);
+                currentRoom.clients.forEach((client) => {
+                    client.write(`[Room ${currentRoom.id}] ${username} has joined the chat.\n`);
+                });
+            }
+            return;
+        }
+
+        if (message.toLowerCase() === 'no' && currentRoom.owner === socket) {
+            currentRoom.pendingRequests.shift()?.write('Your join request was denied.\n');
+            return;
+        }
+
+        // Broadcast chat messages
+        if (currentRoom) {
+            currentRoom.clients.forEach((client) => {
+                if (client !== socket) {
+                    client.write(`[${currentRoom.usernames.get(socket)}]: ${message}\n`);
+                }
+            });
+        }
+    });
+
+    socket.on('end', () => {
+        if (currentRoom) {
+            currentRoom.clients = currentRoom.clients.filter((client) => client !== socket);
+            currentRoom.usernames.delete(socket);
+            currentRoom.clients.forEach((client) => {
+                client.write(`${username} has left the chat.\n`);
+            });
+            if (socket === currentRoom.owner) {
+                currentRoom.clients.forEach((client) => {
+                    client.write(`The room owner has left. Closing the room.\n`);
+                    client.end();
+                });
+                rooms.delete(currentRoom.id);
+            }
+        }
+        console.log(`${username} disconnected.`);
+    });
+});
+
+const PORT = 3000;
+server.listen(PORT, () => {
+    console.log(`Chat server started on port ${PORT}`);
+});
+
+process.on('SIGINT', () => {
+    console.log('\nServer shutting down gracefully.');
+    rooms.forEach((room) => {
+        room.clients.forEach((client) => {
+            client.write('Server is shutting down. Goodbye!\n');
+            client.end();
+        });
+    });
+    server.close(() => {
+        console.log('Server closed.');
+        process.exit(0);
+    });
+});
