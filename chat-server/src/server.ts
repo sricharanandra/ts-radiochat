@@ -12,10 +12,12 @@ type ChatRoom = {
     creator: User;
     users: User[];
     pendingRequests: User[];
+    messageHistory: string[];
 };
 
 const chatRooms: Record<string, ChatRoom> = {};
 const wss = new WebSocketServer({ port: 8080 });
+const messsge_history_limit = 50;
 
 console.log("Server started successfully on port 8080.");
 
@@ -58,6 +60,7 @@ function createRoom(username: string, ws: WebSocket) {
         creator: { username, ws },
         users: [{ username, ws }],
         pendingRequests: [],
+        messageHistory: [],
     };
     chatRooms[roomId] = newRoom;
 
@@ -72,7 +75,10 @@ function joinRoom(username: string, roomId: string, ws: WebSocket) {
         ws.send(JSON.stringify({ type: "error", payload: "Room does not exist." }));
         return;
     }
-
+    if (room.users.some(user => user.username === username)) {
+        ws.send(JSON.stringify({ type: "error", payload: "Username already exists." }))
+        return;
+    }
     room.pendingRequests.push({ username, ws });
     promptNextJoinRequest(room);
 
@@ -109,10 +115,18 @@ function approveJoinRequest(roomId: string, username: string) {
         );
 
         broadcastMessage(roomId, "Server", `${username} has joined the room.`);
+        sendRoomHistory(approvedUser.ws, room);
         console.log(`${username} has been admitted to room ${roomId}.`);
 
         // Prompt the next pending request if there are any
         promptNextJoinRequest(room);
+    }
+}
+function sendRoomHistory(ws: WebSocket, room: ChatRoom) {
+    if (room.messageHistory.length > 0) {
+        ws.send(
+            JSON.stringify({ type: "history", payload: room.messageHistory })
+        )
     }
 }
 
@@ -120,16 +134,23 @@ function broadcastMessage(roomId: string, sender: string, message: string) {
     const room = chatRooms[roomId];
     if (!room) return;
 
+    const formattedMessage = `[${new Date().toISOString()}] ${sender}: ${message}`;
+    room.messageHistory.push(formattedMessage);
+
+    if (room.messageHistory.length > messsge_history_limit) {
+        room.messageHistory.shift();
+    }
+
     room.users.forEach((user) => {
         user.ws.send(
             JSON.stringify({
                 type: "message",
-                payload: { sender, message },
+                payload: { sender, message: formattedMessage },
             })
         );
     });
 
-    console.log(`[Room ${roomId}] ${sender}: ${message}`);
+    console.log(`[Room ${roomId}] ${formattedMessage}`);
 }
 
 function handleDisconnection(ws: WebSocket) {
@@ -142,10 +163,13 @@ function handleDisconnection(ws: WebSocket) {
             broadcastMessage(roomId, "Server", `${user.username} has left the room.`);
 
             if (room.creator.ws === ws) {
-                broadcastMessage(roomId, "Server", "The room creator has left. The room is closing.");
-                room.users.forEach((user) => user.ws.close());
-                delete chatRooms[roomId];
-                console.log(`Room ${roomId} closed.`);
+                broadcastMessage(roomId, "Server", "The creator has left. Assigning a new creator.");
+                if (room.users.length > 0) {
+                    room.creator = room.users[0];
+                } else {
+                    delete chatRooms[roomId];
+                    console.log(`Room ${roomId} deleted`);
+                }
             }
             return;
         }
