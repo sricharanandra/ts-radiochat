@@ -1,10 +1,10 @@
-
 import WebSocket from "ws";
 import readline from "readline";
 
 const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
+    prompt: "> ",
 });
 
 const ws = new WebSocket("ws://localhost:8080");
@@ -65,7 +65,7 @@ function handleServerMessage(message: any) {
             });
             break;
         case "message":
-            console.log(`${message.payload.sender}: ${message.payload.message}`);
+            console.log(`${message.payload.message}`);
             break;
         case "error":
             console.error(`Error: ${message.payload}`);
@@ -74,12 +74,21 @@ function handleServerMessage(message: any) {
 }
 
 function startChat() {
+    rl.prompt();
+
     rl.on("line", (line) => {
+
+        if (!line.trim()) return;
+
         ws.send(
             JSON.stringify({
                 type: "message",
                 payload: { roomId, sender: username, message: line },
             })
         );
+
+        process.stdout.moveCursor(0, -1);
+        process.stdout.clearLine(1);
+        rl.prompt(true);
     });
 }
