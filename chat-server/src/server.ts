@@ -140,7 +140,6 @@ function broadcastMessage(roomId: string, sender: string, message: string) {
     if (room.messageHistory.length > messsge_history_limit) {
         room.messageHistory.shift();
     }
-
     room.users.forEach((user) => {
         user.ws.send(
             JSON.stringify({
