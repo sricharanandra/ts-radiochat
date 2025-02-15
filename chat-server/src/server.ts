@@ -1,4 +1,3 @@
-
 import { WebSocketServer, WebSocket } from "ws";
 import crypto from "crypto";
 
@@ -134,7 +133,7 @@ function broadcastMessage(roomId: string, sender: string, message: string) {
     const room = chatRooms[roomId];
     if (!room) return;
 
-    const formattedMessage = `[${new Date().toISOString()}] ${sender}: ${message}`;
+    const formattedMessage = ` ${sender}: ${message}`;
     room.messageHistory.push(formattedMessage);
 
     if (room.messageHistory.length > messsge_history_limit) {
@@ -149,7 +148,6 @@ function broadcastMessage(roomId: string, sender: string, message: string) {
         );
     });
 
-    console.log(`[Room ${roomId}] ${formattedMessage}`);
 }
 
 function handleDisconnection(ws: WebSocket) {
