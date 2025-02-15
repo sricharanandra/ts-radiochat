@@ -28,9 +28,10 @@ npx ts-node src/client.ts
 
 - start talking
 
+- clients cannot join a created room unless the creator accepts the request
+
   ## Future
 
 - I will find a way to host this on a server, thereby making it useable by actual people to chat via terminal. Also, refactoring and upgrading to make it a proper project by adding features like
--  permission to join chat room, access granted by the room creator
 -  encrypted chat history
 -  and more
