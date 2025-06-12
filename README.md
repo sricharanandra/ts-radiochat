@@ -30,6 +30,12 @@ npx ts-node src/client.ts
 
 - clients cannot join a created room unless the creator accepts the request
 
+- users joining a created room can view the chat history of that room upto 50 recent messages.
+
+- chats are stored peristently even when there are no users in the room, and the room is available to be joined as long as the room hasn't been deleted.
+
+- a room can only be deleted by the creator, using the command ``` /delete-room ```, upon which all the stored chats will also be deleted.
+
   ## Future
 
 - I will find a way to host this on a server, thereby making it useable by actual people to chat via terminal. Also, refactoring and upgrading to make it a proper project by adding features like

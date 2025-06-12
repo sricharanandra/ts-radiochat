@@ -75,19 +75,37 @@ function handleServerMessage(message: any) {
 
 function startChat() {
     rl.prompt();
-
     rl.on("line", (line) => {
+        const trimmed = line.trim();
 
-        if (!line.trim()) return;
+        if (!trimmed) {
+            rl.prompt(true);
+            return;
+        }
 
-        ws.send(
-            JSON.stringify({
+        if (trimmed.startsWith("/")) {
+            // Send command to server
+            ws.send(JSON.stringify({
+                type: "command",
+                payload: {
+                    roomId,
+                    sender: username,
+                    command: trimmed,
+                }
+            }));
+        } else {
+            // Send normal chat message
+            ws.send(JSON.stringify({
                 type: "message",
-                payload: { roomId, sender: username, message: line },
-            })
-        );
+                payload: {
+                    roomId,
+                    sender: username,
+                    message: trimmed,
+                }
+            }));
+        }
 
-        process.stdout.moveCursor(0, -1);
+        process.stdout.moveCursor(0, -1); // Optional: hides your message after you hit enter
         process.stdout.clearLine(1);
         rl.prompt(true);
     });
