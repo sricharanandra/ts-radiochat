@@ -1,5 +1,6 @@
 import WebSocket from "ws";
 import readline from "readline";
+import * as notifier from "node-notifier"
 
 const rl = readline.createInterface({
     input: process.stdin,
@@ -7,7 +8,7 @@ const rl = readline.createInterface({
     prompt: "> ",
 });
 
-const ws = new WebSocket("ws://localhost:8080");
+const ws = new WebSocket("ws://138.2.183.32:8080");
 
 let username: string;
 let roomId: string;
@@ -63,9 +64,28 @@ function handleServerMessage(message: any) {
                     );
                 }
             });
+            notifier.notify({
+                title: 'Chat Room Join Request',
+                message: `${message.payload.username} wants to join the room`,
+                sound: true,
+                wait: false
+            });
             break;
         case "message":
             console.log(`${message.payload.message}`);
+            const isOwnMessage = message.payload.sender === username;
+            const isSystemMessage = message.payload.sender === "Server" || message.payload.sender === "History";
+
+            if (!isOwnMessage && !isSystemMessage) {
+                notifier.notify({
+                    title: `New message from ${message.payload.sender}`,
+                    message: message.payload.message.length > 50
+                        ? message.payload.message.substring(0, 50) + "..."
+                        : message.payload.message,
+                    sound: true,
+                    wait: false
+                });
+            }
             break;
         case "error":
             console.error(`Error: ${message.payload}`);

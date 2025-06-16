@@ -1,11 +1,11 @@
 import { WebSocketServer, WebSocket } from "ws";
 import crypto from "crypto";
-import { 
-    saveRoom, 
-    roomExists, 
-    appendMessage, 
-    deleteRoom as deleteStoredRoom, 
-    getRoomCreator, 
+import {
+    saveRoom,
+    roomExists,
+    appendMessage,
+    deleteRoom as deleteStoredRoom,
+    getRoomCreator,
     getRoomHistory,
     getAllRooms,
     initDB
@@ -13,7 +13,7 @@ import {
 import { ChatRoom, User, StoredRoom } from "./types";
 
 const chatRooms: Record<string, ChatRoom> = {};
-const wss = new WebSocketServer({ port: 8080 });
+const wss = new WebSocketServer({ port: 8080, host: '0.0.0.0' });
 const message_history_limit = 50;
 
 // Initialize the database and load existing rooms
@@ -27,7 +27,7 @@ async function initialize() {
 async function loadExistingRooms() {
     const storedRooms = await getAllRooms();
     console.log(`Loading ${storedRooms.length} existing rooms from database`);
-    
+
     storedRooms.forEach(room => {
         // Create in-memory representation with empty users list
         chatRooms[room.id] = {
@@ -112,7 +112,7 @@ async function joinRoom(username: string, roomId: string, ws: WebSocket) {
     if (!chatRooms[roomId]) {
         const creator = await getRoomCreator(roomId);
         const history = await getRoomHistory(roomId);
-        
+
         chatRooms[roomId] = {
             id: roomId,
             creator: { username: creator || "unknown", ws: null as unknown as WebSocket },
@@ -135,7 +135,7 @@ async function joinRoom(username: string, roomId: string, ws: WebSocket) {
     }
 
     room.pendingRequests.push({ username, ws });
-    
+
     // If no users in room (everyone left but room persists), auto-approve the first person
     if (room.users.length === 0) {
         approveJoinRequest(roomId, username);
@@ -183,7 +183,7 @@ function approveJoinRequest(roomId: string, username: string) {
 
         // Send room history to the new user
         sendRoomHistory(approvedUser.ws, room);
-        
+
         broadcastMessage(roomId, "Server", `${username} has joined the room.`);
         console.log(`${username} has been admitted to room ${roomId}.`);
 
@@ -193,30 +193,30 @@ function approveJoinRequest(roomId: string, username: string) {
 
 function sendRoomHistory(ws: WebSocket, room: ChatRoom) {
     if (room.messageHistory.length > 0) {
-        ws.send(JSON.stringify({ 
-            type: "message", 
-            payload: { 
-                sender: "Server", 
-                message: "--- Chat History ---" 
-            } 
+        ws.send(JSON.stringify({
+            type: "message",
+            payload: {
+                sender: "Server",
+                message: "--- Chat History ---"
+            }
         }));
-        
+
         room.messageHistory.forEach(message => {
-            ws.send(JSON.stringify({ 
-                type: "message", 
-                payload: { 
-                    sender: "History", 
-                    message 
-                } 
+            ws.send(JSON.stringify({
+                type: "message",
+                payload: {
+                    sender: "History",
+                    message
+                }
             }));
         });
-        
-        ws.send(JSON.stringify({ 
-            type: "message", 
-            payload: { 
-                sender: "Server", 
-                message: "--- End of History ---" 
-            } 
+
+        ws.send(JSON.stringify({
+            type: "message",
+            payload: {
+                sender: "Server",
+                message: "--- End of History ---"
+            }
         }));
     }
 }
@@ -227,7 +227,7 @@ async function broadcastMessage(roomId: string, sender: string, message: string)
 
     const formattedMessage = `${sender}: ${message}`;
     room.messageHistory.push(formattedMessage);
-    
+
     // Persist message in database
     await appendMessage(roomId, formattedMessage);
 
@@ -256,7 +256,7 @@ function handleDisconnection(ws: WebSocket) {
             if (room.creator.username === user.username) {
                 room.creator.ws = null as unknown as WebSocket;
             }
-            
+
             // We don't delete the room even if empty now - it persists
             console.log(`${user.username} left room ${roomId}. Room persists with ${room.users.length} active users.`);
             return;
@@ -268,7 +268,7 @@ async function handleClientCommand(command: string, sender: string, ws: WebSocke
     if (command === "/delete-room") {
         // Get the room creator from the database for verification
         const creatorUsername = await getRoomCreator(roomId);
-        
+
         // Only the original creator can delete the room
         if (!creatorUsername || creatorUsername !== sender) {
             ws.send(JSON.stringify({
@@ -290,13 +290,13 @@ async function handleClientCommand(command: string, sender: string, ws: WebSocke
                 }));
             });
         }
-        
+
         // Delete from memory and database
         delete chatRooms[roomId];
         await deleteStoredRoom(roomId);
-        
+
         console.log(`Room ${roomId} deleted by admin ${sender}`);
-        
+
         ws.send(JSON.stringify({
             type: "message",
             payload: {
@@ -305,9 +305,9 @@ async function handleClientCommand(command: string, sender: string, ws: WebSocke
             },
         }));
     } else {
-        ws.send(JSON.stringify({ 
-            type: "error", 
-            payload: "Unknown command. Available commands: /delete-room" 
+        ws.send(JSON.stringify({
+            type: "error",
+            payload: "Unknown command. Available commands: /delete-room"
         }));
     }
 }
