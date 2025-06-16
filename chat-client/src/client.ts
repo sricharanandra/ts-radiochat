@@ -1,6 +1,6 @@
 import WebSocket from "ws";
 import readline from "readline";
-import * as notifier from "node-notifier"
+import notifier from "node-notifier"
 
 const rl = readline.createInterface({
     input: process.stdin,
