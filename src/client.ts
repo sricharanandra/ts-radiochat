@@ -1,6 +1,9 @@
 import WebSocket from "ws";
 import readline from "readline";
 import notifier from "node-notifier"
+import dotenv from "dotenv"
+
+dotenv.config();
 
 const rl = readline.createInterface({
     input: process.stdin,
@@ -8,7 +11,8 @@ const rl = readline.createInterface({
     prompt: "> ",
 });
 
-const ws = new WebSocket("ws://138.2.183.32:8080");
+const serverUrl = process.env.SERVER_URL || "ws://localhost:8080";
+const ws = new WebSocket(serverUrl);
 
 let username: string;
 let roomId: string;
