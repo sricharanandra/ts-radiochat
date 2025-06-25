@@ -59,4 +59,6 @@ npx ts-node src/client.ts
 - Room State and history are managed by the server.
 - This is a minimalist terminal client - No frills
 
-  
+## Related Projects 
+
+- [RadioChat Server](https://github.com/sricharanandra/ts-radiochat-server) - TypeScript CLI server
