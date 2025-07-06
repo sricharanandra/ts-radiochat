@@ -1,36 +1,23 @@
 import WebSocket from "ws";
 import readline from "readline";
-import notifier from "node-notifier"
-
+import notifier from "node-notifier";
 
 const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout,
-    prompt: "> ",
 });
 
-const ws = new WebSocket("ws://138.2.183.32:8080");
+const serverUrl = "ws://tunnel.sreus.tech:8080";
+console.log(`Connecting to ${serverUrl}...`);
+const ws = new WebSocket(serverUrl);
 
-let username: string;
-let roomId: string;
+let username: string | null = null;
+let currentRoomId: string | null = null;
+let jwtToken: string | null = null;
 
 ws.on("open", () => {
     console.log("Connected to the chat server.");
-
-    rl.question("Enter your username: ", (name) => {
-        username = name;
-
-        rl.question("Do you want to create a room? (yes/NO): ", (answer) => {
-            if (answer.toLowerCase() === "yes") {
-                ws.send(JSON.stringify({ type: "createRoom", payload: { username } }));
-            } else {
-                rl.question("Enter room ID to join: ", (id) => {
-                    roomId = id;
-                    ws.send(JSON.stringify({ type: "joinRoom", payload: { username, roomId } }));
-                });
-            }
-        });
-    });
+    promptAuth();
 });
 
 ws.on("message", (data: WebSocket.RawData) => {
@@ -42,92 +29,193 @@ ws.on("message", (data: WebSocket.RawData) => {
     }
 });
 
-function handleServerMessage(message: any) {
-    switch (message.type) {
-        case "roomCreated":
-            roomId = message.payload.roomId;
-            console.log(`Room created! Your room ID is ${roomId}`);
-            startChat();
-            break;
-        case "joinApproved":
-            console.log(`You have joined room ${roomId}`);
-            startChat();
-            break;
-        case "joinRequest":
-            console.log(`${message.payload.username} wants to join the room.`);
-            rl.question(`Approve ${message.payload.username}? (yes/no): `, (answer) => {
-                if (answer.toLowerCase() === "yes") {
-                    ws.send(
-                        JSON.stringify({
-                            type: "approveJoin",
-                            payload: { roomId, username: message.payload.username },
-                        })
-                    );
-                }
-            });
-            notifier.notify({
-                title: 'Chat Room Join Request',
-                message: `${message.payload.username} wants to join the room`,
-                sound: true,
-                wait: false
-            });
-            break;
-        case "message":
-            console.log(`${message.payload.message}`);
-            const isOwnMessage = message.payload.sender === username;
-            const isSystemMessage = message.payload.sender === "Server" || message.payload.sender === "History";
+ws.on("close", () => {
+    console.log("Disconnected from server. Exiting.");
+    process.exit(0);
+});
 
-            if (!isOwnMessage && !isSystemMessage) {
+ws.on("error", (error) => {
+    console.error("WebSocket error:", error.message);
+    console.log("Could not connect to the server. Please ensure it is running.");
+    process.exit(1);
+});
+
+function promptAuth() {
+    rl.question("Do you want to (r)egister or (l)ogin? ", (choice) => {
+        if (choice.toLowerCase() === 'r') {
+            handleRegister();
+        } else if (choice.toLowerCase() === 'l') {
+            handleLogin();
+        } else {
+            console.log("Invalid choice. Please enter 'r' or 'l'.");
+            promptAuth();
+        }
+    });
+}
+
+function handleRegister() {
+    rl.question("Choose a username: ", (newUsername) => {
+        rl.question("Choose a password: ", (password) => {
+            ws.send(JSON.stringify({
+                type: "register",
+                payload: { username: newUsername, password }
+            }));
+        });
+    });
+}
+
+function handleLogin() {
+    rl.question("Enter your username: ", (loginUsername) => {
+        username = loginUsername; // Store username for display purposes
+        rl.question("Enter your password: ", (password) => {
+            ws.send(JSON.stringify({
+                type: "login",
+                payload: { username: loginUsername, password }
+            }));
+        });
+    });
+}
+
+function promptForRoom() {
+    rl.question("Do you want to (c)reate or (j)oin a room? ", (answer) => {
+        if (answer.toLowerCase() === "c") {
+            rl.question("Enter a name for your new room: ", (name) => {
+                ws.send(JSON.stringify({ type: "createRoom", payload: { token: jwtToken, name } }));
+            });
+        } else if (answer.toLowerCase() === 'j') {
+            rl.question("Enter room ID to join: ", (id) => {
+                ws.send(JSON.stringify({ type: "joinRoom", payload: { token: jwtToken, roomId: id } }));
+            });
+        } else {
+            console.log("Invalid choice.");
+            promptForRoom();
+        }
+    });
+}
+
+function handleServerMessage(message: any) {
+    const { type, payload } = message;
+
+    switch (type) {
+        case "registered":
+            console.log(` ${payload.message}`);
+            handleLogin();
+            break;
+
+        case "loggedIn":
+            jwtToken = payload.token;
+            console.log(` Logged in successfully! Welcome, ${username}.`);
+            promptForRoom();
+            break;
+
+        case "roomCreated":
+            currentRoomId = payload.roomId;
+            console.log(` Room "${payload.name}" created! Your room ID is: ${currentRoomId}`);
+            startChat();
+            break;
+
+        case "joinedRoom":
+            currentRoomId = payload.roomId;
+            console.log(` You have joined room "${payload.name}"`);
+            startChat();
+            break;
+
+        case "history":
+            console.log("\n--- Last 50 Messages ---");
+            payload.messages.forEach((msg: any) => {
+                console.log(`[${new Date(msg.createdAt).toLocaleTimeString()}] ${msg.author.username}: ${msg.content}`);
+            });
+            console.log("--- End of History ---\n");
+            rl.prompt(true);
+            break;
+
+        case "message":
+            const msgAuthor = payload.author.username;
+            const msgContent = payload.content;
+            if (msgAuthor === username) {
+                readline.moveCursor(process.stdout, 0, -1);
+                readline.clearLine(process.stdout, 1);
+            }
+            const displayMsg = `${msgAuthor}: ${msgContent}`;
+            console.log(displayMsg);
+
+            if (msgAuthor !== username) {
                 notifier.notify({
-                    title: `New message from ${message.payload.sender}`,
-                    message: message.payload.message.length > 50
-                        ? message.payload.message.substring(0, 50) + "..."
-                        : message.payload.message,
+                    title: `New message from ${msgAuthor}`,
+                    message: msgContent.length > 50 ? msgContent.substring(0, 50) + "..." : msgContent,
                     sound: true,
                     wait: false
                 });
             }
+            rl.prompt(true);
             break;
+
+        case "userJoined":
+            console.log(`\n[Server: ${payload.username} has joined the room.]`);
+            rl.prompt(true);
+            break;
+
+        case "userLeft":
+            console.log(`\n[Server: ${payload.username} has left the room.]`);
+            rl.prompt(true);
+            break;
+
+        case "roomDeleted":
+            console.log(`\n[Server: ${payload.message}]`);
+            console.log("You will be disconnected.");
+            ws.close();
+            break;
+
         case "error":
-            console.error(`Error: ${message.payload}`);
+            console.error(`\n❌ Error from server: ${payload.message}`);
+            // If auth error, might need to re-login
+            if (payload.message.includes("token")) {
+                console.log("Please try logging in again.");
+                jwtToken = null; // Clear invalid token
+                promptAuth();
+            } else {
+                rl.prompt(true);
+            }
+            break;
+
+        default:
+            console.log("\n[Received unhandled message type]:", type);
+            rl.prompt(true);
             break;
     }
 }
 
 function startChat() {
+    console.log("You can now start sending messages. Type /exit to leave.");
+    rl.setPrompt(`${username}> `);
     rl.prompt();
+
     rl.on("line", (line) => {
         const trimmed = line.trim();
-
         if (!trimmed) {
             rl.prompt(true);
             return;
         }
-
-        if (trimmed.startsWith("/")) {
-            // Send command to server
-            ws.send(JSON.stringify({
-                type: "command",
-                payload: {
-                    roomId,
-                    sender: username,
-                    command: trimmed,
-                }
-            }));
-        } else {
-            // Send normal chat message
-            ws.send(JSON.stringify({
-                type: "message",
-                payload: {
-                    roomId,
-                    sender: username,
-                    message: trimmed,
-                }
-            }));
+        if (trimmed.toLowerCase() === '/exit') {
+            ws.close();
+            return;
         }
 
-        process.stdout.moveCursor(0, -1); // Optional: hides your message after you hit enter
-        process.stdout.clearLine(1);
-        rl.prompt(true);
+        const messagePayload = {
+            token: jwtToken,
+            roomId: currentRoomId,
+        };
+
+        if (trimmed.startsWith("/")) {
+            ws.send(JSON.stringify({
+                type: "command",
+                payload: { ...messagePayload, command: trimmed }
+            }));
+        } else {
+            ws.send(JSON.stringify({
+                type: "message",
+                payload: { ...messagePayload, content: trimmed }
+            }));
+        }
     });
 }
