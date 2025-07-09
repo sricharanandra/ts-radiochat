@@ -96,6 +96,13 @@ function promptForRoom() {
 function handleServerMessage(message: any) {
     const { type, payload } = message;
 
+    const isAsyncMessage = ["message", "userJoined", "userLeft", "error", "roomDeleted", "joinRequest", "info"].includes(type);
+    if (isAsyncMessage) {
+        readline.clearLine(process.stdout, 0);
+        readline.cursorTo(process.stdout, 0);
+    }
+
+
     switch (type) {
         case "registered":
             console.log(` ${payload.message}`);
@@ -129,15 +136,42 @@ function handleServerMessage(message: any) {
             rl.prompt(true);
             break;
 
+        case "joinRequestSent":
+            console.log(`[Server: ${payload.message}]`);
+            break;
+
+        case "joinApproved":
+            console.log(`\n[Server: Your request was approved! Joining room "${payload.name}".]`);
+            currentRoomId = payload.roomId;
+            startChat();
+            break;
+
+        case "joinRejected":
+            console.log(`\n[Server: ${payload.message}]`);
+            promptForRoom();
+            break;
+
+
+        case "joinRequest":
+            console.log(`\n[Server: User '${payload.username}' wants to join. Type /approve or /reject]`);
+            rl.prompt(true);
+            break;
+
+        case "info":
+            console.log(`\n[Server: ${payload.message}]`);
+            rl.prompt(true);
+            break;
+
         case "message":
             const msgAuthor = payload.author.username;
             const msgContent = payload.content;
+            const displayMsg = `${msgAuthor}: ${msgContent}`;
+            console.log(displayMsg);
             if (msgAuthor === username) {
                 readline.moveCursor(process.stdout, 0, -1);
                 readline.clearLine(process.stdout, 1);
             }
-            const displayMsg = `${msgAuthor}: ${msgContent}`;
-            console.log(displayMsg);
+
 
             if (msgAuthor !== username) {
                 notifier.notify({
