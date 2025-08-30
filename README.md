@@ -2,7 +2,8 @@
 
 A terminal-based WebSocket chat client written in TypeScript. Connect to your `radiochat` server and chat in real time — straight from your terminal.
 
-> visit [radiochat-tui](www.github.com/sricharanandra/radiochat-tui) for a tui implementation in rust for a better experience.
+> visit [radiochat-tui](https://www.github.com/sricharanandra/radiochat-tui) for a tui implementation in rust for a better experience. \
+> visit [radiochat-server](https://www.github.com/sricharanandra/ts-radiochat-server) for the server code.
 
 ## Features
 
@@ -62,3 +63,4 @@ npx ts-node src/client.ts
 ## Related Projects 
 
 - [RadioChat Server](https://github.com/sricharanandra/ts-radiochat-server) - TypeScript CLI server
+- [Radiochat TUI](https://github.com/sricharanandra/radiochat-tui) - Rust TUI Client
